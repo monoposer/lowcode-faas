@@ -1,0 +1,16 @@
+[Unit]
+Description=lowcode-faas HTTP server
+After=network.target docker.service
+
+[Service]
+Type=simple
+# 请按实际路径修改 ExecStart 与 WorkingDirectory
+ExecStart=/usr/local/bin/lowcode-faas
+WorkingDirectory=/opt/lowcode-faas
+Restart=always
+RestartSec=5
+# 若需从环境变量读取配置，可在此或同目录下 .env 配置
+# EnvironmentFile=/opt/lowcode-faas/.env
+
+[Install]
+WantedBy=multi-user.target

@@ -20,15 +20,16 @@ type Function struct {
 	CreatedAt  time.Time `json:"created_at"`
 }
 
-// RunResult 表示一次执行结果
+// RunResult 表示一次执行结果（函数为 HTTP 服务，返回其 HTTP 响应）
 type RunResult struct {
-	RunID        string          `json:"run_id"`
-	Status       string          `json:"status"`        // success | failed | timeout | error
-	Output       json.RawMessage `json:"output"`        // 尝试解析 stdout 为 JSON，失败则返回字符串
-	ErrorMessage string          `json:"error_message"` // stderr 或平台错误
-	ExitCode     int             `json:"exit_code"`     // 进程退出码
-	DurationMs   int64           `json:"duration_ms"`   // 执行耗时
-	FunctionID   string          `json:"function_id"`
+	RunID          string            `json:"run_id"`
+	Status         string            `json:"status"`           // success | failed | timeout
+	HTTPStatusCode int              `json:"http_status_code"`  // 函数返回的 HTTP 状态码
+	HTTPHeaders    map[string]string `json:"http_headers,omitempty"` // 函数返回的响应头（可选）
+	Output         json.RawMessage   `json:"output"`           // 响应体（原始）
+	ErrorMessage   string           `json:"error_message"`    // 平台错误或超时信息
+	DurationMs      int64            `json:"duration_ms"`
+	FunctionID      string           `json:"function_id"`
 }
 
 // 创建简单 ID（时间戳）
