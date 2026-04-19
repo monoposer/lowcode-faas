@@ -1,14 +1,13 @@
 [Unit]
-Description=lowcode-faas dispatcher (HTTP API)
+Description=lowcode-faas worker (function executor)
 After=network.target docker.service
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/dispatcher
+ExecStart=/usr/local/bin/worker
 WorkingDirectory=/opt/lowcode-faas
 Restart=always
 RestartSec=5
-# Environment=LOWCODE_FAAS_WORKER_URL=http://127.0.0.1:9090
 # EnvironmentFile=/opt/lowcode-faas/.env
 
 [Install]

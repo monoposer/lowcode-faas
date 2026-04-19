@@ -1,0 +1,186 @@
+:root {
+  color-scheme: dark;
+  font-family:
+    system-ui,
+    -apple-system,
+    Segoe UI,
+    Roboto,
+    Ubuntu,
+    Cantarell,
+    Noto Sans,
+    sans-serif;
+  line-height: 1.4;
+  background: #0f1115;
+  color: #e8eaed;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+a {
+  color: #8ab4f8;
+}
+
+button {
+  cursor: pointer;
+  border-radius: 6px;
+  border: 1px solid #3c4043;
+  background: #1a1d24;
+  color: #e8eaed;
+  padding: 0.45rem 0.75rem;
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+input,
+textarea,
+select {
+  border-radius: 6px;
+  border: 1px solid #3c4043;
+  background: #0b0d12;
+  color: #e8eaed;
+  padding: 0.45rem 0.6rem;
+}
+
+.toolbarLang {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.appShell {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  min-height: 100vh;
+}
+
+.sidebar {
+  border-right: 1px solid #2a2f3a;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sidebarHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.fnList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow: auto;
+}
+
+.fnItem {
+  text-align: left;
+  border: 1px solid #2a2f3a;
+  background: #141821;
+  padding: 8px 10px;
+  border-radius: 8px;
+}
+
+.fnItemActive {
+  border-color: #5f8bff;
+}
+
+.main {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.editorHost {
+  height: min(70vh, 900px);
+  border: 1px solid #2a2f3a;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.invokeJsonHost {
+  height: 180px;
+  border: 1px solid #2a2f3a;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.mono {
+  font-family:
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Monaco,
+    Consolas,
+    'Liberation Mono',
+    'Courier New',
+    monospace;
+  white-space: pre-wrap;
+}
+
+.panel {
+  border: 1px solid #2a2f3a;
+  border-radius: 8px;
+  padding: 10px;
+  background: #0b0d12;
+}
+
+.invokeMeta {
+  font-size: 13px;
+  opacity: 0.85;
+  margin-bottom: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+
+.outputBlock {
+  margin: 0;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid #3d4a63;
+  background: #0a0c10;
+  max-height: 320px;
+  overflow: auto;
+}
+
+.invokeResultTitle {
+  font-weight: 600;
+  margin: 16px 0 8px;
+}
+
+.invokeFullToggle {
+  margin-top: 12px;
+  font-size: 13px;
+}
+
+.invokeFullToggle summary {
+  cursor: pointer;
+  color: #8ab4f8;
+  user-select: none;
+}
+
+.error {
+  color: #ffb4ab;
+}

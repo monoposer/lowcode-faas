@@ -1,0 +1,9 @@
+services:
+  playground:
+    build:
+      context: ..
+      dockerfile: playground/Dockerfile
+    ports:
+      - "5174:80"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

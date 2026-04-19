@@ -1,0 +1,73 @@
+# 本地开发：dispatcher + worker + Loki + Promtail（日志走 Docker stdout → Promtail → Loki）
+# 生产请使用自有 Loki/Grafana 地址，并设置 LOWCODE_FAAS_FUNCTION_LOGS_SINK=docker_json 等变量。
+name: lowcode-faas-dev
+
+services:
+  loki:
+    image: grafana/loki:2.9.8
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - loki-data:/loki
+
+  promtail:
+    image: grafana/promtail:2.9.8
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./deploy/promtail-dev.yml:/etc/promtail/config.yml:ro
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      - loki
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        GO_IMAGE: ${LOWCODE_FAAS_DOCKER_GO_IMAGE:-golang:1.22-bookworm}
+        RUNTIME_IMAGE: ${LOWCODE_FAAS_DOCKER_RUNTIME_IMAGE:-debian:bookworm-slim}
+    image: lowcode-faas:dev
+    command: ["worker"]
+    environment:
+      LOWCODE_FAAS_STORAGE: files
+      LOWCODE_FAAS_WORKER_LISTEN: ":9090"
+      LOWCODE_FAAS_FUNCTION_CACHE: "false"
+      LOWCODE_FAAS_NODE_DOCKER_IMAGE: ${LOWCODE_FAAS_DOCKER_NODE_IMAGE:-node:22-alpine}
+      LOWCODE_FAAS_FUNCTION_LOGS: "true"
+      LOWCODE_FAAS_FUNCTION_LOGS_SINK: docker_json
+    volumes:
+      - ./data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "9090:9090"
+    depends_on:
+      - loki
+
+  dispatcher:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        GO_IMAGE: ${LOWCODE_FAAS_DOCKER_GO_IMAGE:-golang:1.22-bookworm}
+        RUNTIME_IMAGE: ${LOWCODE_FAAS_DOCKER_RUNTIME_IMAGE:-debian:bookworm-slim}
+    image: lowcode-faas:dev
+    command: ["dispatcher"]
+    environment:
+      LOWCODE_FAAS_STORAGE: files
+      LOWCODE_FAAS_LISTEN: ":8080"
+      LOWCODE_FAAS_WORKER_URL: http://worker:9090
+      LOWCODE_FAAS_FUNCTION_CACHE: "false"
+      LOWCODE_FAAS_FUNCTION_LOGS: "true"
+      LOWCODE_FAAS_FUNCTION_LOGS_SINK: docker_json
+    volumes:
+      - ./data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "8080:8080"
+    depends_on:
+      - worker
+      - loki
+
+volumes:
+  loki-data: {}

@@ -1,2 +1,10 @@
 lowcode-faas
+dispatcher
+worker
 data/
+
+.env
+
+playground/node_modules
+playground/dist
+playground/.npm-cache
