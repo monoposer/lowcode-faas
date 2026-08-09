@@ -1,4 +1,4 @@
-.PHONY: run run-worker migrate docker-up docker-down test tidy build
+.PHONY: run run-worker migrate docker-up docker-up-meta docker-down test tidy build build-example-worker
 
 # Load local .env into the process environment when present (KEY=value lines).
 define load_env
@@ -9,13 +9,15 @@ endef
 run:
 	@$(load_env) go run ./cmd/meta
 
-# Worker: fastschema/qjs runtime (default :9090)
+# Example worker: embed SDK with custom host (default :9090)
 run-worker:
-	@$(load_env) go run ./cmd/worker
+	@$(load_env) go run ./examples/worker-embed
 
 build:
 	go build -o bin/lowcode-faas-meta ./cmd/meta
-	go build -o bin/lowcode-faas-worker ./cmd/worker
+
+build-example-worker:
+	go build -o bin/lowcode-faas-worker-embed ./examples/worker-embed
 
 migrate:
 	@echo "Auto-migrate runs on meta start. SQL reference: migrations/000001_init.up.sql"
@@ -24,8 +26,12 @@ migrate:
 docker-up:
 	docker compose up -d
 
+# Infra + Meta image (worker stays an SDK / example process)
+docker-up-meta:
+	docker compose --profile meta up -d --build
+
 docker-down:
-	docker compose down
+	docker compose --profile meta down
 
 test:
 	go test ./...

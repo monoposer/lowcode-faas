@@ -8,15 +8,15 @@ Action 是一段可部署的 **TypeScript 函数**：
 
 - **元数据**存 Postgres（名称、分组、版本、超时、OSS URL、etag 等）
 - **源码（`.ts`）与编译产物（`.js`）**存 S3 兼容 OSS
-- **Meta**（`:8080`）负责 CRUD、TS→JS 编译、对 Worker 提供 runtime 拉取
-- **Worker**（`:9090`）负责对外 **invoke**，用 qjs 执行已编译 JS
+- **Meta**（`:8080`）负责 CRUD、TS→JS 编译、对 Worker 提供 runtime 拉取（Docker / `cmd/meta`）
+- **Worker**（[`worker`](../worker) SDK，默认 `:9090`）嵌入客户进程，负责对外 **invoke**，用 qjs 执行已编译 JS；示例进程见 `examples/worker-embed`
 
 ```
 Studio / Playground / Client
         │
         ├─ CRUD / compile ──────────► Meta :8080 ──► Postgres + S3
         │                                  ▲
-        └─ POST .../invoke ────────► Worker :9090 ─┘  GET /runtime
+        └─ POST .../invoke ────────► Worker SDK ───┘  GET /runtime
                                               │
                                               └─ qjs + host bindings
 ```
@@ -142,13 +142,14 @@ export default function handler(req: ActionRequest): ActionResponse {
 
 ### 4.3 Host 绑定（可选）
 
-Worker 在全局 `host` 上注入 Go 能力（**不要** `import host`；见 `js/runtime.d.ts`、`examples/host-bindings/`）：
+Worker SDK 在全局 `host` 上注入 Go 能力（**不要** `import host`；见 `js/runtime.d.ts`、`examples/host-bindings/`、`examples/worker-embed/`）：
 
 | API | 作用 |
 |-----|------|
-| `host.log` / `host.echo` / `host.upper` / `host.nowMs` | 基础工具 |
+| `host.log` / `host.echo` / `host.upper` / `host.nowMs` | 基础工具（`WithDefaultHost`） |
 | `host.mem` + `memSet` / `memGet` / `memLen` | 进程内 KV（ProxyValue，勿序列化） |
 | `host.goCtx` / `host.goCtxDeadlineMs` | 透传 Go `context.Context` |
+| 自定义 `host.*` | 客户用 `worker.WithHost` 注册；编辑器类型由客户自维护 `.d.ts` |
 
 ## 5. 生命周期
 
@@ -350,13 +351,14 @@ Playground 经 Vite 代理：CRUD → Meta `:8080`，invoke → Worker `:9090`�
 |------|------|
 | 模型 | `internal/model/action.go` |
 | Meta handlers / DTO | `internal/api/handlers.go`, `internal/api/dto.go` |
+| Worker SDK | `worker/` |
 | Worker invoke | `internal/api/worker.go`, `internal/api/httpaction.go` |
 | Postgres | `internal/store/postgres.go` |
 | 迁移 | `migrations/000001_init.up.sql` |
 | TS 编译 / 默认模板 / OSS key | `internal/tscompile/` |
 | qjs runner + host | `internal/runner/` |
 | 类型声明 | `js/runtime.d.ts` |
-| Host 示例 | `examples/host-bindings/` |
+| Host / embed 示例 | `examples/host-bindings/`, `examples/worker-embed/` |
 
 ## 11. 设计约束（当前版本）
 

@@ -1,13 +1,13 @@
 # lowcode-faas
 
-TypeScript Action FaaS with **meta** and **runtime worker** split:
+TypeScript Action FaaS with **meta** (control plane) and an embeddable **worker SDK**:
 
-- **Meta** (`cmd/meta`, `:8080`): Action CRUD; on save/update/compile, **TypeScript → JS (esbuild)**; metadata in Postgres; **source + JS always uploaded to S3-compatible OSS**. Exposes `GET /api/actions/{name}/runtime` for the worker.
-- **Worker** (`cmd/worker`, `:9090`): **public invoke**; loads metadata + compiled JS from meta, runs with [fastschema/qjs](https://github.com/fastschema/qjs).
+- **Meta** (`cmd/meta`, `:8080`): Action CRUD; on save/update/compile, **TypeScript → JS (esbuild)**; metadata in Postgres; **source + JS always uploaded to S3-compatible OSS**. Exposes `GET /api/actions/{name}/runtime` for workers. Deploy with Docker (see `Dockerfile`) or `make run`.
+- **Worker** ([`worker`](./worker) package): **public invoke** embedded in *your* Go service; loads metadata + compiled JS from meta, runs with [fastschema/qjs](https://github.com/fastschema/qjs). Configure via `LOWCODE_FAAS_META_URL` and related env vars. Inject custom Go host functions with `worker.WithHost`.
 
 ```
 Client → Meta :8080          CRUD / compile → Postgres + S3 OSS
-Client → Worker :9090        POST /api/actions/{name}/invoke
+Client → Your service        worker SDK :9090 (example) POST .../invoke
                                ├─ LRU hit? → If-None-Match etag → Meta 304 (no JS body)
                                ├─ miss / changed → Meta /runtime (metadata + js) → cache Put
                                └─ qjs execute → JSON
@@ -36,12 +36,27 @@ Response body (and invoke HTTP JSON): `{ status, data }`.
 cp .env.example .env
 make docker-up          # postgres :5433 + rustfs :9000/:9001
 
-# terminal 1 — meta
+# terminal 1 — meta (or: docker compose --profile meta up -d --build)
 make run
 
-# terminal 2 — worker (needs META_URL)
+# terminal 2 — example worker (embeds SDK; needs META_URL)
 make run-worker
 ```
+
+Embed in your own service:
+
+```go
+import "lowcode-faas/worker"
+
+w, err := worker.New(worker.ConfigFromEnv(),
+  worker.WithDefaultHost(),
+  worker.WithHost(myBinder), // optional custom host.*
+)
+_ = w.Run(ctx)
+// or: mux.Handle("/", w.Handler())
+```
+
+See [examples/worker-embed](./examples/worker-embed/) for a full process + custom `host.greet` + editor `host.d.ts` demo.
 
 Playground: `examples/lowcode-faas-playground` (`make faas-playground-dev`).
 
@@ -60,7 +75,7 @@ OSS uses the **S3 API** only (rustfs / MinIO / AWS). Object keys: `action-js/{na
 | DELETE | `/api/actions/{id}` | soft delete |
 | POST | `/api/actions/{id}/compile` | recompile from OSS source |
 
-## Worker API (`:9090`)
+## Worker API (SDK listen addr, default `:9090`)
 
 | Method | Path | Notes |
 |--------|------|-------|
@@ -69,14 +84,14 @@ OSS uses the **S3 API** only (rustfs / MinIO / AWS). Object keys: `action-js/{na
 
 ## Runtime
 
-Uses `github.com/fastschema/qjs`. Worker registers **Go host bindings** on `globalThis.host`. See [examples/host-bindings](./examples/host-bindings/).
+Uses `github.com/fastschema/qjs`. The SDK registers **Go host bindings** on `globalThis.host`. See [examples/host-bindings](./examples/host-bindings/) and [examples/worker-embed](./examples/worker-embed/).
 
-Types: `js/runtime.d.ts`.
+Base types: `js/runtime.d.ts`. Custom `host.*` typings are owned by your frontend (demo: `examples/worker-embed/host.d.ts`).
 
 ## Makefile
 
-`make run` · `make run-worker` · `make test` · `make tidy` · `make docker-up` · `make migrate`
+`make run` · `make run-worker` (example embed) · `make test` · `make tidy` · `make docker-up` · `make migrate` · `make build`
 
 ## Env
 
-See `.env.example`. `LOWCODE_FAAS_META_URL` is required by the worker. `LOWCODE_FAAS_JS_CACHE_SIZE` controls the worker JS LRU (default 128).
+See `.env.example`. `LOWCODE_FAAS_META_URL` is required by the worker SDK. `LOWCODE_FAAS_JS_CACHE_SIZE` controls the JS LRU (default 128).
