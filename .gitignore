@@ -1,10 +1,5 @@
-lowcode-faas
-dispatcher
-worker
+bin/
 data/
-
 .env
-
-playground/node_modules
-playground/dist
-playground/.npm-cache
+*.exe
+/tmp/

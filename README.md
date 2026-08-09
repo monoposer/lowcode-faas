@@ -1,158 +1,82 @@
 # lowcode-faas
 
-A lightweight FaaS runtime (**JavaScript only in v1**): user code is **Node ESM** and exports a fixed-signature **`handler`**. The **dispatcher** process exposes an HTTP API and can optionally forward execution to a separate **worker** process. Source can live under local `data/`, or **PostgreSQL + S3** (`db_s3`).
+TypeScript Action FaaS with **meta** and **runtime worker** split:
 
-**Languages:** [简体中文](README-zh.md)
+- **Meta** (`cmd/meta`, `:8080`): Action CRUD; on save/update/compile, **TypeScript → JS (esbuild)**; metadata in Postgres; **source + JS always uploaded to S3-compatible OSS**. Exposes `GET /api/actions/{name}/runtime` for the worker.
+- **Worker** (`cmd/worker`, `:9090`): **public invoke**; loads metadata + compiled JS from meta, runs with [fastschema/qjs](https://github.com/fastschema/qjs).
 
-## Process roles
+```
+Client → Meta :8080          CRUD / compile → Postgres + S3 OSS
+Client → Worker :9090        POST /api/actions/{name}/invoke
+                               ├─ LRU hit? → If-None-Match etag → Meta 304 (no JS body)
+                               ├─ miss / changed → Meta /runtime (metadata + js) → cache Put
+                               └─ qjs execute → JSON
+```
 
-| Command | Role |
-|---------|------|
-| `go run ./cmd/dispatcher` | Public `POST /functions`, `POST /functions/{name}/invoke`; if `LOWCODE_FAAS_WORKER_URL` is set, invoke is proxied to the worker over HTTP |
-| `go run ./cmd/worker` | Internal `POST /v1/run`, reads storage and runs user `handler` in **Docker** |
+Handler contract:
 
-For local dev you may run **dispatcher only** (omit `WORKER_URL`); execution then uses the same logic in-process as the worker.
+```ts
+import type { ActionRequest, ActionResponse } from 'lowcode-faas/runtime'
 
-## User code contract (fixed shape)
-
-- Files are **ESM**; on disk the default filename is `{name}.mjs`.
-- **Must** export:
-
-```javascript
-/** @param {import('../../js/runtime.d.ts').HandlerInput} input */
-export async function handler(input) {
-  return { ok: true, data: { message: "..." } };
+export default function handler(req: ActionRequest): ActionResponse {
+  return { status: 200, data: { ok: true, query: req.query, body: req.body } }
 }
 ```
 
-- **`input`**: same JSON object as the `input` field on the `invoke` request (any JSON object).
-- **Return value** (stored in `RunResult.output`) must be an object with boolean **`ok`**:
-  - Success: `{ "ok": true, "data": <anything> }`
-  - Business failure: `{ "ok": false, "error": "message", "code": "optional" }`
+Also accepts `export function handler` / `export async function handler`. `host` is a worker global.
 
-For TypeScript, see [`js/runtime.d.ts`](js/runtime.d.ts) in this repo.
+Request fields: `context`, `body`, `data`, `query`, `method`, `headers`, `path`.  
+Response body (and invoke HTTP JSON): `{ status, data }`.
 
-Execution: the platform writes `input.json` in the container, runs an embedded `bootstrap.mjs` that calls `handler`, then reads `output.json` (user code does **not** open an HTTP port).
+**Action 技术文档**：[docs/action.md](./docs/action.md)（模型、生命周期、Meta/Worker API、示例）。
 
-## Build
+## Quick start
 
 ```bash
-go build -o dispatcher ./cmd/dispatcher
-go build -o worker ./cmd/worker
+cp .env.example .env
+make docker-up          # postgres :5433 + rustfs :9000/:9001
+
+# terminal 1 — meta
+make run
+
+# terminal 2 — worker (needs META_URL)
+make run-worker
 ```
 
-## Configuration and environment variables
+Playground: `examples/lowcode-faas-playground` (`make faas-playground-dev`).
 
-Core settings live in [`internal/config/config.go`](internal/config/config.go) and can be overridden via env (see [`internal/config/env.go`](internal/config/env.go)).
+OSS uses the **S3 API** only (rustfs / MinIO / AWS). Object keys: `action-js/{name}/{etag}.ts` and `.js`.
 
-| Variable | Meaning |
-|----------|---------|
-| `LOWCODE_FAAS_LISTEN` | Dispatcher listen address, default `:8080` |
-| `LOWCODE_FAAS_WORKER_URL` | If set, invoke is forwarded to this base URL (e.g. `http://127.0.0.1:9090`) |
-| `LOWCODE_FAAS_WORKER_LISTEN` | Worker listen address, default `:9090` |
-| `LOWCODE_FAAS_STORAGE` | `files` (default) or `db_s3` |
-| `LOWCODE_FAAS_POSTGRES_DSN` | PostgreSQL DSN when using `db_s3` |
-| `LOWCODE_FAAS_S3_*` | S3 / MinIO settings for `db_s3` |
-| `LOWCODE_FAAS_FUNCTION_CACHE` | `true` / `false` |
-| `LOWCODE_FAAS_INVOKE_DEFAULT_TIMEOUT_MS` | Default cap in ms when the request omits `timeout_ms` (default `120000`); too low may cause `signal: killed` on first `docker pull` |
-| `LOWCODE_FAAS_NODE_DOCKER_IMAGE` | Image for user `handler`, default `node:22-alpine`; use a private registry URL on air-gapped networks |
-| `LOWCODE_FAAS_PREWARM_NODE_IMAGE` | Default `true`: background `docker pull` of the image above on startup; set `false` to disable |
-| `LOWCODE_FAAS_FUNCTION_LOGS` / `LOWCODE_FAAS_FUNCTION_LOGS_SINK` | Capture user `console.*`. **Recommended:** `docker_json` or `promtail`: one JSON object per line to process stdout → Docker json-file → **Promtail → Loki** (see `docker-compose.dev.yml`). `stdout` keeps the prefixed legacy format. Direct Loki push uses `loki` + `LOWCODE_FAAS_LOG_LOKI_*` (usually avoid duplicating Promtail) |
-| `LOWCODE_FAAS_LOGS_GRAFANA_EXPLORE_URL_TEMPLATE` | Optional; `GET /function-logs/query` may include `grafana_explore_url` in JSON, with placeholders `{{logql}}`, `{{run_id}}`, `{{deployment_id}}` (URL-encoded when substituted) |
+## Meta API (`:8080`)
 
-User code runs via **`docker create` + `docker cp` workspace into the container + `docker start`**, then **`docker cp` out `output.json`**, so the worker does not bind-mount paths that only exist in a sibling container’s `/tmp` (which would cause missing `bootstrap.mjs` / `MODULE_NOT_FOUND`).
+| Method | Path | Notes |
+|--------|------|-------|
+| GET | `/healthz` | `role=meta` |
+| GET | `/api/actions` | list (`?group=` / `?q=` optional search) |
+| GET | `/api/actions/{name}` | includes TS `content` from OSS |
+| GET | `/api/actions/{name}/runtime` | worker: metadata + compiled `js` (supports `If-None-Match` → 304) |
+| POST | `/api/actions` | create; empty `content` → default handler template; compiles TS→JS, uploads both to OSS (**201**) |
+| PUT | `/api/actions/{id}` | recompile + re-upload on save |
+| DELETE | `/api/actions/{id}` | soft delete |
+| POST | `/api/actions/{id}/compile` | recompile from OSS source |
 
-**China / Docker registry mirrors (not HTTP proxy):** `docker pull` during `invoke` runs on the **host** Docker daemon (with `docker.sock` mounted). Slow pulls from Docker Hub should be fixed with **registry mirrors**, e.g. Docker Desktop → **Settings → Docker Engine**, add `registry-mirrors` (example: `"registry-mirrors": ["https://docker.m.daocloud.io"]`—use whatever your mirror documents). On Linux, edit **`/etc/docker/daemon.json`** and restart Docker.  
-**Without daemon mirror config:** set `LOWCODE_FAAS_NODE_DOCKER_IMAGE` to the **full name** on your mirror (e.g. `docker.m.daocloud.io/library/node:22-alpine`). Keeping `node:22-alpine` uses the default registry; this is unrelated to `HTTP_PROXY`.
+## Worker API (`:9090`)
 
-## API
+| Method | Path | Notes |
+|--------|------|-------|
+| GET | `/healthz` | `role=worker` |
+| POST | `/api/actions/{name}/invoke` | HTTP-mode request → response body `{ status, data }` (HTTP status = `status`; meta in `X-Faas-*` headers) |
 
-### Collections (nested paths)
+## Runtime
 
-- `POST /collections` body: `{ "path": "org/team", "env": { ... } }` (`env` optional)—register a path; non-root collections must exist before creating functions under them.
-- `GET /collections?prefix=org`—list registered paths (optional prefix filter).
-- `PUT /collections/{path}/env` or `PUT /collections/env` (root)—body `{ "env": { ... } }` for collection-level env.
-- URL form: `/collections/org/team/functions`, `/collections/org/team/functions/{name}/invoke`, etc. (`org/team` is `collection_path`).
+Uses `github.com/fastschema/qjs`. Worker registers **Go host bindings** on `globalThis.host`. See [examples/host-bindings](./examples/host-bindings/).
 
-### Create function `POST /functions`
+Types: `js/runtime.d.ts`.
 
-```json
-{
-  "name": "greet",
-  "language": "javascript",
-  "source_code": "...",
-  "source_url": "https://example.com/handler.mjs",
-  "collection_path": "org/team",
-  "env": {}
-}
-```
+## Makefile
 
-`collection_path` may be omitted (root collection); or pass `?collection_path=org%2Fteam` on the request.
+`make run` · `make run-worker` · `make test` · `make tidy` · `make docker-up` · `make migrate`
 
-`language` only supports **`javascript`** (may be omitted; default is `javascript`).
+## Env
 
-### List functions `GET /functions`
-
-Query `collection_path` selects the collection; omit for root.
-
-### List deployment versions `GET /functions/{name}/versions`
-
-`db_s3` returns full history; `files` returns a single row for the current version only. Same `?collection_path=` or nested URL rules.
-
-### Invoke `POST /functions/{name}/invoke`
-
-```json
-{ "input": { "name": "lowcode" }, "timeout_ms": 15000, "env": {}, "version": 3 }
-```
-
-Optional **`version`** pins a deployment (`db_s3`: any historical version; `files`: only if it matches current). Also `?version=3`. Collections: `?collection_path=org%2Fteam`.
-
-Response is still `RunResult` (includes `execution_id`, `deployment_version`, `deployment_id`, `collection_path`, etc.); business payload is **`output`** (JSON return value of `handler`).
-
-### Env merge order for invoke
-
-Process env injected into the container is: **ancestor collection env (root → … → current path, child overrides parent) ∪ function env ∪ request body `env`**, with the last winning.
-
-### Execution logs and Loki / Promtail (recommended)
-
-1. Set `LOWCODE_FAAS_FUNCTION_LOGS=true`, `LOWCODE_FAAS_FUNCTION_LOGS_SINK=docker_json` (alias `promtail`).
-2. Logs are **one JSON line per event** (`run_id`, `execution_id`, `log_stream`, `function_name`, `collection_path`, `deployment_id`, …) on **worker/dispatcher stdout**, scraped by **Promtail** (`deploy/promtail-dev.yml`) via the Docker API into **Loki**. Local: `docker compose -f docker-compose.dev.yml up` (includes `loki:3100`).
-3. **Query helper:** `GET /function-logs/query?run_id=...&function=...&collection_path=...&deployment_id=...` returns JSON with **example queries** per backend (`loki_logql_json`, `loki_logql_substr`, `elasticsearch_query_string`, `aws_cloudwatch_logs_insights`, `google_cloud_logging`). ES, Loki, CloudWatch, and GCP **do not share one query language**; align on **stable JSON field names** and express the same filters in each product.
-4. If `LOWCODE_FAAS_LOGS_GRAFANA_EXPLORE_URL_TEMPLATE` is set, the response may include `grafana_explore_url` (template placeholders like `{{logql}}` are substituted server-side).
-
-### Pull update `POST /functions/{name}/pull`
-
-```json
-{ "source_url": "https://example.com/handler.mjs" }
-```
-
-## Data layout (`files` mode)
-
-- `data/collections/__root__/functions/{name}.mjs` — root collection source (current default)
-- `data/functions/{name}.mjs` — **legacy** root source; still read if present when listing/loading root functions
-- `data/collections/__root__/functions/{name}.env.json` — root function env (alongside the `.mjs` above)
-- `data/functions/{name}.env.json` — env for legacy root `.mjs` only
-- `data/collections/{segment}/.../{segment}/functions/{name}.mjs` — non-root collection source
-- `data/collections/__root__/collection.env.json` — root collection-level env (optional)
-- `data/collections/{path}/collection.env.json` — collection-level env for that path
-
-## systemd
-
-- [`lowcode-faas.service`](lowcode-faas.service): run **dispatcher** (set `ExecStart` to your `dispatcher` binary path).
-- If you use a worker: add another unit for `worker`, and set `Environment=LOWCODE_FAAS_WORKER_URL=http://127.0.0.1:9090` on the dispatcher unit.
-
-## Repository layout
-
-```
-cmd/dispatcher/main.go   # Dispatcher HTTP entry
-cmd/worker/main.go     # Worker HTTP entry
-internal/config/       # Config and env overrides
-internal/model/        # Types and contracts
-internal/store/        # files + PostgreSQL/S3
-internal/runner/       # Docker + bootstrap.mjs
-internal/httpserver/   # Dispatcher routes
-internal/workerserver/ # Worker routes
-internal/workerclient/ # Dispatcher → worker HTTP
-internal/envutil/ internal/limits/ internal/sourcefetch/
-js/runtime.d.ts        # TS types for handlers
-```
+See `.env.example`. `LOWCODE_FAAS_META_URL` is required by the worker. `LOWCODE_FAAS_JS_CACHE_SIZE` controls the worker JS LRU (default 128).
