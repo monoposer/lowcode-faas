@@ -51,7 +51,11 @@ func (h *WorkerHandler) invoke(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	runID := newRunID()
 	name := r.PathValue("name")
-	group := strings.TrimSpace(r.URL.Query().Get("group"))
+	group := groupFromRequest(r)
+	if group == "" {
+		writeErr(w, http.StatusBadRequest, "group is required (query group, X-Tenant-Id, or X-Solution-Id)")
+		return
+	}
 	log := h.log.With(
 		"run_id", runID,
 		"action", name,

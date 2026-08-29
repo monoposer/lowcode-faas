@@ -193,7 +193,7 @@ Invoke ─────────┴──► Worker 拉 runtime → LRU(etag) 
 
 ### 6.2 `GET /api/actions/{name}`
 
-可选 `?group=`。无 group 时按 name 取第一条（`ORDER BY id LIMIT 1`）。
+需要 `group`（query `group`，或 header `X-Tenant-Id` / `X-Solution-Id`）。缺少 group 返回 **400**，不会跨组按 name 命中。
 
 响应：完整 `ActionDTO`，含 `content`（OSS 可读时）。
 

@@ -50,7 +50,7 @@ func (h *Handler) Routes() http.Handler {
 func withCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Tenant-Id, X-Tenant-ID, X-Solution-Id, If-None-Match")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
@@ -76,7 +76,7 @@ func (h *Handler) healthz(w http.ResponseWriter, _ *http.Request) {
 
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 	items, err := h.db.List(r.Context(), store.ListOpts{
-		Group: strings.TrimSpace(r.URL.Query().Get("group")),
+		Group: groupFromRequest(r),
 		Q:     strings.TrimSpace(r.URL.Query().Get("q")),
 	})
 	if err != nil {
@@ -88,15 +88,11 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
-	var (
-		item *model.Action
-		err  error
-	)
-	if g := strings.TrimSpace(r.URL.Query().Get("group")); g != "" {
-		item, err = h.db.GetByGroupName(r.Context(), g, name)
-	} else {
-		item, err = h.db.GetByName(r.Context(), name)
+	group, ok := requireGroup(w, r)
+	if !ok {
+		return
 	}
+	item, err := h.db.GetByGroupName(r.Context(), group, name)
 	if err != nil {
 		writeNotFound(w, err)
 		return
@@ -132,6 +128,13 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		label = name
 	}
 	group := strings.TrimSpace(body.Group)
+	if group == "" {
+		group = groupFromRequest(r)
+	}
+	if group == "" {
+		writeErr(w, http.StatusBadRequest, "group is required (body group, X-Tenant-Id, or X-Solution-Id)")
+		return
+	}
 	sourceType := tscompile.NormalizeSourceType(body.SourceType)
 	timeout := 60
 	if body.Timeout != nil {
@@ -142,7 +145,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		async = *body.Async
 	}
 
-	etag, sourceURL, jsURL, err := h.compileAndUpload(r.Context(), name, sourceType, source)
+	etag, sourceURL, jsURL, err := h.compileAndUpload(r.Context(), group, name, sourceType, source)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
@@ -210,8 +213,12 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 	if body.Name != nil && strings.TrimSpace(*body.Name) != "" {
 		name = strings.TrimSpace(*body.Name)
 	}
+	group := existing.Group
+	if body.Group != nil && strings.TrimSpace(*body.Group) != "" {
+		group = strings.TrimSpace(*body.Group)
+	}
 
-	etag, sourceURL, jsURL, err := h.compileAndUpload(r.Context(), name, sourceType, source)
+	etag, sourceURL, jsURL, err := h.compileAndUpload(r.Context(), group, name, sourceType, source)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
@@ -259,7 +266,7 @@ func (h *Handler) recompile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	st := tscompile.NormalizeSourceType(existing.SourceType)
-	etag, sourceURL, jsURL, err := h.compileAndUpload(r.Context(), existing.Name, st, source)
+	etag, sourceURL, jsURL, err := h.compileAndUpload(r.Context(), existing.Group, existing.Name, st, source)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
@@ -296,15 +303,11 @@ func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {
 // Supports If-None-Match: when it equals the current etag, responds 304 without fetching OSS.
 func (h *Handler) runtime(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
-	var (
-		item *model.Action
-		err  error
-	)
-	if g := strings.TrimSpace(r.URL.Query().Get("group")); g != "" {
-		item, err = h.db.GetByGroupName(r.Context(), g, name)
-	} else {
-		item, err = h.db.GetByName(r.Context(), name)
+	group, ok := requireGroup(w, r)
+	if !ok {
+		return
 	}
+	item, err := h.db.GetByGroupName(r.Context(), group, name)
 	if err != nil {
 		writeNotFound(w, err)
 		return
@@ -338,7 +341,7 @@ func (h *Handler) runtime(w http.ResponseWriter, r *http.Request) {
 }
 
 // compileAndUpload always writes both .ts and .js into S3 OSS and returns their URLs.
-func (h *Handler) compileAndUpload(ctx context.Context, name, sourceType, source string) (etag, sourceURL, jsURL string, err error) {
+func (h *Handler) compileAndUpload(ctx context.Context, group, name, sourceType, source string) (etag, sourceURL, jsURL string, err error) {
 	st := tscompile.NormalizeSourceType(sourceType)
 	etag = tscompile.HashSource(st, source)
 	if h.uploader == nil {
@@ -347,7 +350,7 @@ func (h *Handler) compileAndUpload(ctx context.Context, name, sourceType, source
 	if h.compiler == nil {
 		return "", "", "", errors.New("ts compiler not configured")
 	}
-	sourceURL, err = h.uploader.Put(ctx, tscompile.SourceKey(name, etag), strings.NewReader(source))
+	sourceURL, err = h.uploader.Put(ctx, tscompile.SourceKey(group, name, etag), strings.NewReader(source))
 	if err != nil {
 		return "", "", "", fmt.Errorf("upload source: %w", err)
 	}
@@ -358,7 +361,7 @@ func (h *Handler) compileAndUpload(ctx context.Context, name, sourceType, source
 	if len(bin) == 0 {
 		return "", "", "", errors.New("compiler produced empty js")
 	}
-	jsURL, err = h.uploader.Put(ctx, tscompile.ArtifactKey(name, etag), bytes.NewReader(bin))
+	jsURL, err = h.uploader.Put(ctx, tscompile.ArtifactKey(group, name, etag), bytes.NewReader(bin))
 	if err != nil {
 		return "", "", "", fmt.Errorf("upload js: %w", err)
 	}
@@ -366,6 +369,31 @@ func (h *Handler) compileAndUpload(ctx context.Context, name, sourceType, source
 		return "", "", "", errors.New("source_url and js_url are required in oss")
 	}
 	return etag, sourceURL, jsURL, nil
+}
+
+func groupFromRequest(r *http.Request) string {
+	if g := strings.TrimSpace(r.URL.Query().Get("group")); g != "" {
+		return g
+	}
+	if g := strings.TrimSpace(r.Header.Get("X-Tenant-Id")); g != "" {
+		return g
+	}
+	if g := strings.TrimSpace(r.Header.Get("X-Tenant-ID")); g != "" {
+		return g
+	}
+	if g := strings.TrimSpace(r.Header.Get("X-Solution-Id")); g != "" {
+		return g
+	}
+	return ""
+}
+
+func requireGroup(w http.ResponseWriter, r *http.Request) (string, bool) {
+	g := groupFromRequest(r)
+	if g == "" {
+		writeErr(w, http.StatusBadRequest, "group is required (query group, X-Tenant-Id, or X-Solution-Id)")
+		return "", false
+	}
+	return g, true
 }
 
 func (h *Handler) resolveSource(ctx context.Context, a *model.Action) (string, error) {

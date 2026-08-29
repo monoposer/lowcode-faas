@@ -44,7 +44,7 @@ func (s *Postgres) Close() {
 }
 
 func (s *Postgres) Migrate(ctx context.Context) error {
-	_, err := s.pool.Exec(ctx, `
+	_, err := s.pool.Exec(ctx, migrateSQL(s.namespace(), `
 CREATE TABLE IF NOT EXISTS actions (
   id BIGSERIAL PRIMARY KEY,
   name VARCHAR(128) NOT NULL,
@@ -64,7 +64,7 @@ CREATE TABLE IF NOT EXISTS actions (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS actions_group_name_uidx
   ON actions ("group", name) WHERE deleted_at IS NULL;
-`)
+`))
 	return err
 }
 
@@ -124,14 +124,6 @@ func (s *Postgres) List(ctx context.Context, opts ListOpts) ([]*model.Action, er
 		out = append(out, a)
 	}
 	return out, rows.Err()
-}
-
-func (s *Postgres) GetByName(ctx context.Context, name string) (*model.Action, error) {
-	return scanAction(s.pool.QueryRow(ctx, `
-SELECT `+actionCols+` FROM actions
-WHERE name = $1 AND deleted_at IS NULL
-ORDER BY id ASC
-LIMIT 1`, name))
 }
 
 func (s *Postgres) GetByGroupName(ctx context.Context, group, name string) (*model.Action, error) {

@@ -21,7 +21,7 @@ build-example-worker:
 
 migrate:
 	@echo "Auto-migrate runs on meta start. SQL reference: migrations/000001_init.up.sql"
-	@$(load_env) psql "$${LOWCODE_FAAS_POSTGRES_DSN:-postgres://faas:faas@localhost:5433/lowcode_faas?sslmode=disable}" -f migrations/000001_init.up.sql
+	@$(load_env) psql "$${LOWCODE_FAAS_POSTGRES_DSN:-postgres://faas:faas@localhost:5433/lowcode?sslmode=disable&search_path=faas}" -f migrations/000001_init.up.sql
 
 docker-up:
 	docker compose up -d

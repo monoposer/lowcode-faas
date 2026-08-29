@@ -35,7 +35,7 @@ func Load() Config {
 		Listen:         env("LOWCODE_FAAS_LISTEN", ":8080"),
 		WorkerListen:   env("LOWCODE_FAAS_WORKER_LISTEN", ":9090"),
 		MetaURL:        strings.TrimRight(env("LOWCODE_FAAS_META_URL", "http://127.0.0.1:8080"), "/"),
-		PostgresDSN:    env("LOWCODE_FAAS_POSTGRES_DSN", "postgres://faas:faas@localhost:5433/lowcode_faas?sslmode=disable"),
+		PostgresDSN:    env("LOWCODE_FAAS_POSTGRES_DSN", "postgres://faas:faas@localhost:5433/lowcode?sslmode=disable&search_path=faas"),
 		S3Endpoint:     endpoint,
 		S3Region:       env("LOWCODE_FAAS_S3_REGION", "us-east-1"),
 		S3Bucket:       bucket,
