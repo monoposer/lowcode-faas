@@ -19,8 +19,8 @@ import (
 	"lowcode-faas/internal/tscompile"
 )
 
-// actionNameRe: identifier used in invoke paths (matches playground).
-var actionNameRe = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_-]*$`)
+// actionNameRe: platform meta/scm names are dotted (e.g. action.entaa._get, scm.action.entity.create).
+var actionNameRe = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_.-]*$`)
 
 // Handler is the meta API: CRUD + TS→JS compile on save. Source + JS always land in S3 OSS.
 // Public invoke lives on the worker; meta only exposes /runtime for the worker to fetch metadata+JS.
@@ -116,7 +116,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !actionNameRe.MatchString(name) {
-		writeErr(w, http.StatusBadRequest, "name must start with a letter and use only letters, digits, _ or -")
+		writeErr(w, http.StatusBadRequest, "name must start with a letter and use only letters, digits, _, - or .")
 		return
 	}
 	source := body.Content

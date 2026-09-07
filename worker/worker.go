@@ -17,9 +17,12 @@ import (
 
 // Worker is an embeddable FaaS runtime: loads compiled JS from meta and invokes via qjs.
 type Worker struct {
-	cfg     Config
-	handler http.Handler
-	log     *slog.Logger
+	cfg        Config
+	handler    http.Handler
+	log        *slog.Logger
+	meta       *metaclient.Client
+	cache      *jscache.LRU
+	runnerOpts []runner.Option
 }
 
 // New builds a Worker. cfg.MetaURL is required.
@@ -28,6 +31,7 @@ type Worker struct {
 //	w, err := worker.New(worker.ConfigFromEnv(), worker.WithDefaultHost(), worker.WithHost(myBinder))
 //	if err != nil { ... }
 //	_ = w.Run(ctx) // or mux.Handle("/", w.Handler())
+//	// or programmatic: w.Invoke(ctx, name, group, input, timeout, extraHosts...)
 func New(cfg Config, opts ...Option) (*Worker, error) {
 	metaURL := strings.TrimRight(strings.TrimSpace(cfg.MetaURL), "/")
 	if metaURL == "" {
@@ -65,9 +69,12 @@ func New(cfg Config, opts ...Option) (*Worker, error) {
 
 	cfg.MetaURL = metaURL
 	return &Worker{
-		cfg:     cfg,
-		handler: wh.Routes(),
-		log:     log,
+		cfg:        cfg,
+		handler:    wh.Routes(),
+		log:        log,
+		meta:       meta,
+		cache:      cache,
+		runnerOpts: runnerOpts,
 	}, nil
 }
 

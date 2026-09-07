@@ -70,10 +70,10 @@ DB 中只存完整 URL（`source_url` / `js_url`），不存源码正文。
 **Name 规则**（Meta create 校验）：
 
 ```text
-^[a-zA-Z][a-zA-Z0-9_-]*$
+^[a-zA-Z][a-zA-Z0-9_.-]*$
 ```
 
-必须以字母开头，仅允许字母、数字、`_`、`-`。
+必须以字母开头，允许字母、数字、`_`、`-`、`.`（与 platform meta/scm 层级名一致，如 `action.entaa._get`）。
 
 **默认 Handler**（`POST /api/actions` 且 `content` 为空时写入）：
 
