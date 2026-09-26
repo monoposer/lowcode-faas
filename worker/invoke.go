@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"lowcode-faas/internal/jscache"
-	"lowcode-faas/internal/metaclient"
-	"lowcode-faas/internal/runner"
+	"github.com/monoposer/lowcode-faas/internal/jscache"
+	"github.com/monoposer/lowcode-faas/internal/metaclient"
+	"github.com/monoposer/lowcode-faas/internal/runner"
 )
 
 // InvokeResult is the outcome of a programmatic action invoke.

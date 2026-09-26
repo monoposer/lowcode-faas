@@ -1,7 +1,7 @@
 package worker
 
 import (
-	"lowcode-faas/internal/runner"
+	"github.com/monoposer/lowcode-faas/internal/runner"
 )
 
 // HostBinder registers Go-backed APIs on a QuickJS context before each action invoke.

@@ -14,9 +14,9 @@ import (
 	"strconv"
 	"strings"
 
-	"lowcode-faas/internal/model"
-	"lowcode-faas/internal/store"
-	"lowcode-faas/internal/tscompile"
+	"github.com/monoposer/lowcode-faas/internal/model"
+	"github.com/monoposer/lowcode-faas/internal/store"
+	"github.com/monoposer/lowcode-faas/internal/tscompile"
 )
 
 // actionNameRe: platform meta/scm names are dotted (e.g. action.entaa._get, scm.action.entity.create).

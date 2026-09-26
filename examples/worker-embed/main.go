@@ -14,7 +14,7 @@ import (
 
 	"github.com/fastschema/qjs"
 
-	"lowcode-faas/worker"
+	"github.com/monoposer/lowcode-faas/worker"
 )
 
 func main() {

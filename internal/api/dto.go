@@ -1,7 +1,7 @@
 package api
 
 import (
-	"lowcode-faas/internal/model"
+	"github.com/monoposer/lowcode-faas/internal/model"
 	"time"
 )
 

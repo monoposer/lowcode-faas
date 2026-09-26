@@ -6,10 +6,10 @@ import (
 	"os/signal"
 	"syscall"
 
-	"lowcode-faas/internal/api"
-	"lowcode-faas/internal/config"
-	"lowcode-faas/internal/store"
-	"lowcode-faas/internal/tscompile"
+	"github.com/monoposer/lowcode-faas/internal/api"
+	"github.com/monoposer/lowcode-faas/internal/config"
+	"github.com/monoposer/lowcode-faas/internal/store"
+	"github.com/monoposer/lowcode-faas/internal/tscompile"
 )
 
 // Meta process: Action CRUD + TS→JS compile on save. Artifacts always go to S3 OSS.

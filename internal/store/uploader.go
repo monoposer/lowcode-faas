@@ -3,7 +3,7 @@ package store
 import (
 	"context"
 
-	"lowcode-faas/internal/config"
+	"github.com/monoposer/lowcode-faas/internal/config"
 )
 
 // NewUploaderFromConfig always returns an S3-compatible OSS uploader.

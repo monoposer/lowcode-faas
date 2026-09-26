@@ -1,4 +1,4 @@
-module lowcode-faas
+module github.com/monoposer/lowcode-faas
 
 go 1.25.0
 
